@@ -154,9 +154,10 @@ public class PhotoLibrary extends CordovaPlugin {
 
               final JSONObject libraryItem = args.optJSONObject(0);
               final JSONObject options = args.optJSONObject(1);
-              final String mediaId = options.getString("id");
-              final String mimeType = options.getString("mimeType");
-              final String fileName = options.getString("fileName");
+              
+              final String mediaId = libraryItem.getString("id");
+              final String mimeType = libraryItem.getString("mimeType");
+              final String fileName = libraryItem.getString("fileName");
               final int thumbnailWidth = options.getInt("thumbnailWidth");
               final int thumbnailHeight = options.getInt("thumbnailHeight");
               final double quality = options.getDouble("quality");

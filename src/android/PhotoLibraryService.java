@@ -166,7 +166,13 @@ public class PhotoLibraryService {
     String mediaURL = getMediaURL(rawMediaId);
     int mediaId = getMediaId(rawMediaId);
 
-    bitmap = context.getContentResolver().loadThumbnail(Uri.fromFile(new File(mediaURL)), new Size(thumbnailWidth, thumbnailHeight), null);
+    // bitmap = context.getContentResolver().loadThumbnail(Uri.fromFile(new File(mediaURL)), new Size(thumbnailWidth, thumbnailHeight), null);
+
+    if(mimeType.split("/")[0] == "image"){
+      bitmap = MediaStore.Images.Thumbnails.getThumbnail(context.getContentResolver(), mediaId, MediaStore.Images.Thumbnails.MINI_KIND, null);
+    } else if(mimeType.split("/")[0] == "video"){
+      bitmap = MediaStore.Video.Thumbnails.getThumbnail(context.getContentResolver(), mediaId, MediaStore.Images.Thumbnails.MINI_KIND, null);
+    }
 
     if (bitmap != null) {
       // String newThumbnailName = 
