@@ -150,13 +150,13 @@ import Foundation
 
             let service = PhotoLibraryService.instance
 
-            let photoId = command.arguments[0] as! String
+            let libraryItem = command.arguments[0] as! NSDictionary
             let options = command.arguments[1] as! NSDictionary
             let thumbnailWidth = options["thumbnailWidth"] as! Int
             let thumbnailHeight = options["thumbnailHeight"] as! Int
             let quality = Float(options["quality"] as! Double)
 
-            service.getThumbnailURL(photoId, thumbnailWidth: thumbnailWidth, thumbnailHeight: thumbnailHeight, quality: quality) { (thumbnailURL) in
+            service.getThumbnailURL(libraryItem.id, thumbnailWidth: thumbnailWidth, thumbnailHeight: thumbnailHeight, quality: quality) { (thumbnailURL) in
 
                 let pluginResult = thumbnailURL != nil ?
                     CDVPluginResult(
