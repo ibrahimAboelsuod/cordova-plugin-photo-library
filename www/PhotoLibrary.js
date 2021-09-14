@@ -102,10 +102,7 @@ photoLibrary.isAuthorized = function (success, error) {
 
 // Generates url that can be accessed directly, so it will work more efficiently than getThumbnail, which does base64 encode/decode.
 // If success callback not provided, will return value immediately, but use overload with success as it browser-friendly
-photoLibrary.getThumbnailURL = function (photoIdOrLibraryItem, success, error, options) {
-
-  var photoId = typeof photoIdOrLibraryItem.id !== 'undefined' ? photoIdOrLibraryItem.id : photoIdOrLibraryItem;
-
+photoLibrary.getThumbnailURL = function (libraryItem, success, error, options) {
   if (typeof success !== 'function' && typeof options === 'undefined') {
     options = success;
     success = undefined;
@@ -113,33 +110,14 @@ photoLibrary.getThumbnailURL = function (photoIdOrLibraryItem, success, error, o
 
   options = getThumbnailOptionsWithDefaults(options);
 
-  if(isIOS) {
-    cordova.exec(
-      function (thumbnailURL, mimeType) {
-        success(thumbnailURL);
-      },
-      error,
-      'PhotoLibrary',
-      'getThumbnailURL', [photoId, options]
-    );
-  } else {
-    var urlParams = 'photoId=' + fixedEncodeURIComponent(photoId) +
-      '&width=' + fixedEncodeURIComponent(options.thumbnailWidth) +
-      '&height=' + fixedEncodeURIComponent(options.thumbnailHeight) +
-      '&quality=' + fixedEncodeURIComponent(options.quality);
-    var thumbnailURL = 'cdvphotolibrary://thumbnail?' + urlParams;
-
-    if (success) {
-      if (isBrowser) {
-        cordova.exec(function(thumbnailURL) { success(thumbnailURL + '#' + urlParams); }, error, 'PhotoLibrary', '_getThumbnailURLBrowser', [photoId, options]);
-      } else {
-        success(thumbnailURL);
-      }
-    } else {
-      return thumbnailURL;
-    }
-  }
-
+  cordova.exec(
+    function (thumbnailURL) {
+      success(thumbnailURL);
+    },
+    error,
+    'PhotoLibrary',
+    'getThumbnailURL', [libraryItem, options]
+  );
 };
 
 // Generates url that can be accessed directly, so it will work more efficiently than getPhoto, which does base64 encode/decode.

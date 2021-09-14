@@ -30,6 +30,7 @@ public class PhotoLibrary extends CordovaPlugin {
   public static final String ACTION_GET_LIBRARY = "getLibrary";
   public static final String ACTION_GET_ALBUMS = "getAlbums";
   public static final String ACTION_GET_THUMBNAIL = "getThumbnail";
+  public static final String ACTION_GET_THUMBNAIL_URL = "getThumbnailURL";
   public static final String ACTION_GET_PHOTO = "getPhoto";
   public static final String ACTION_STOP_CACHING = "stopCaching";
   public static final String ACTION_REQUEST_AUTHORIZATION = "requestAuthorization";
@@ -63,13 +64,14 @@ public class PhotoLibrary extends CordovaPlugin {
               final int maxItems = options.getInt("maxItems");
               final double chunkTimeSec = options.getDouble("chunkTimeSec");
               final boolean includeAlbumData = options.getBoolean("includeAlbumData");
+              final boolean includeVideos = options.getBoolean("includeVideos");
 
               if (!cordova.hasPermission(READ_EXTERNAL_STORAGE)) {
                 callbackContext.error(service.PERMISSION_ERROR);
                 return;
               }
 
-              PhotoLibraryGetLibraryOptions getLibraryOptions = new PhotoLibraryGetLibraryOptions(itemsInChunk, maxItems, chunkTimeSec, includeAlbumData);
+              PhotoLibraryGetLibraryOptions getLibraryOptions = new PhotoLibraryGetLibraryOptions(itemsInChunk, maxItems, chunkTimeSec, includeAlbumData, includeVideos);
 
               service.getLibrary(getContext(), getLibraryOptions, new PhotoLibraryService.ChunkResultRunnable() {
                 @Override
@@ -145,7 +147,38 @@ public class PhotoLibrary extends CordovaPlugin {
         });
         return true;
 
-      } else if (ACTION_GET_PHOTO.equals(action)) {
+      } else if (ACTION_GET_THUMBNAIL_URL.equals(action)) {
+        cordova.getThreadPool().execute(new Runnable() {
+          public void run() {
+            try {
+
+              final JSONObject libraryItem = args.optJSONObject(0);
+              final JSONObject options = args.optJSONObject(1);
+              final String mediaId = options.getString("id");
+              final String mimeType = options.getString("mimeType");
+              final String fileName = options.getString("fileName");
+              final int thumbnailWidth = options.getInt("thumbnailWidth");
+              final int thumbnailHeight = options.getInt("thumbnailHeight");
+              final double quality = options.getDouble("quality");
+
+              if (!cordova.hasPermission(READ_EXTERNAL_STORAGE)) {
+                callbackContext.error(service.PERMISSION_ERROR);
+                return;
+              }
+
+              PhotoLibraryService.PictureData thumbnail = service.getThumbnailURL(getContext(), mediaId, mimeType, fileName, thumbnailWidth, thumbnailHeight, quality);
+              callbackContext.sendPluginResult(createMultipartPluginResult(PluginResult.Status.OK, thumbnail));
+
+            } catch (Exception e) {
+              e.printStackTrace();
+              callbackContext.error(e.getMessage());
+            }
+          }
+        });
+        return true;
+
+      }
+      else if (ACTION_GET_PHOTO.equals(action)) {
 
         cordova.getThreadPool().execute(new Runnable() {
           public void run() {

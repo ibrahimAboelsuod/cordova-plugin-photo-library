@@ -13,6 +13,7 @@ import android.os.Environment;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.util.Size;
 
 import org.apache.cordova.CordovaInterface;
 import org.json.JSONArray;
@@ -44,8 +45,9 @@ import java.util.TimeZone;
 public class PhotoLibraryService {
 
   // TODO: implement cache
-  //int cacheSize = 4 * 1024 * 1024; // 4MB
-  //private LruCache<String, byte[]> imageCache = new LruCache<String, byte[]>(cacheSize);
+  // int cacheSize = 4 * 1024 * 1024; // 4MB
+  // private LruCache<String, byte[]> imageCache = new LruCache<String,
+  // byte[]>(cacheSize);
 
   protected PhotoLibraryService() {
     dateFormatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
@@ -65,43 +67,50 @@ public class PhotoLibraryService {
     return instance;
   }
 
-  public void getLibrary(Context context, PhotoLibraryGetLibraryOptions options, ChunkResultRunnable completion) throws JSONException {
+  public void getLibrary(Context context, PhotoLibraryGetLibraryOptions options, ChunkResultRunnable completion)
+      throws JSONException {
 
-    String whereClause = "";
-    queryLibrary(context, options.itemsInChunk, options.maxItems, options.chunkTimeSec, options.includeAlbumData, whereClause, completion);
+    String whereClause = MediaStore.Files.FileColumns.MEDIA_TYPE + "=" + MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE
+        + " OR " + MediaStore.Files.FileColumns.MEDIA_TYPE + "=" + MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO;
+    queryLibrary(context, options.itemsInChunk, options.maxItems, options.chunkTimeSec, options.includeAlbumData,
+        whereClause, completion);
 
   }
 
   public ArrayList<JSONObject> getAlbums(Context context) throws JSONException {
 
-    // All columns here: https://developer.android.com/reference/android/provider/MediaStore.Images.ImageColumns.html,
+    // All columns here:
+    // https://developer.android.com/reference/android/provider/MediaStore.Images.ImageColumns.html,
     // https://developer.android.com/reference/android/provider/MediaStore.MediaColumns.html
-    JSONObject columns = new JSONObject() {{
-      put("id", MediaStore.Images.ImageColumns.BUCKET_ID);
-      put("title", MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME);
-    }};
+    JSONObject columns = new JSONObject() {
+      {
+        put("id", MediaStore.Images.ImageColumns.BUCKET_ID);
+        put("title", MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME);
+      }
+    };
 
-    final ArrayList<JSONObject> queryResult = queryContentProvider(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, columns, "1) GROUP BY 1,(2", 0);
+    final ArrayList<JSONObject> queryResult = queryContentProvider(context, MediaStore.Files.getContentUri("external"),
+        columns, "1) GROUP BY 1,(2", 0);
     return queryResult;
 
   }
 
-  public PictureData getThumbnail(Context context, String photoId, int thumbnailWidth, int thumbnailHeight, double quality) throws IOException {
+  public PictureData getThumbnail(Context context, String photoId, int thumbnailWidth, int thumbnailHeight,
+      double quality) throws IOException {
 
     Bitmap bitmap = null;
 
-    String imageURL = getImageURL(photoId);
+    String imageURL = getMediaURL(photoId);
     File imageFile = new File(imageURL);
 
-    // TODO: maybe it never worth using MediaStore.Images.Thumbnails.getThumbnail, as it returns sizes less than 512x384?
+    // TODO: maybe it never worth using MediaStore.Images.Thumbnails.getThumbnail,
+    // as it returns sizes less than 512x384?
     if (thumbnailWidth == 512 && thumbnailHeight == 384) { // In such case, thumbnail will be cached by MediaStore
-      int imageId = getImageId(photoId);
-      // For some reason and against documentation, MINI_KIND image can be returned in size different from 512x384, so the image will be scaled later if needed
-      bitmap = MediaStore.Images.Thumbnails.getThumbnail(
-        context.getContentResolver(),
-        imageId ,
-        MediaStore.Images.Thumbnails.MINI_KIND,
-        (BitmapFactory.Options) null);
+      int imageId = getMediaId(photoId);
+      // For some reason and against documentation, MINI_KIND image can be returned in
+      // size different from 512x384, so the image will be scaled later if needed
+      bitmap = MediaStore.Images.Thumbnails.getThumbnail(context.getContentResolver(), imageId,
+          MediaStore.Images.Thumbnails.MINI_KIND, (BitmapFactory.Options) null);
     }
 
     if (bitmap == null) { // No free caching here
@@ -149,10 +158,38 @@ public class PhotoLibraryService {
 
   }
 
+  public PhotoLibraryService.PictureData getThumbnailURL(Context context, String rawMediaId, String mimeType, String fileName, int thumbnailWidth,
+      int thumbnailHeight, double quality) throws IOException {
+
+    Bitmap bitmap = null;
+
+    String mediaURL = getMediaURL(rawMediaId);
+    int mediaId = getMediaId(rawMediaId);
+
+    bitmap = context.getContentResolver().loadThumbnail(Uri.fromFile(new File(mediaURL)), new Size(thumbnailWidth, thumbnailHeight), null);
+
+    if (bitmap != null) {
+      // String newThumbnailName = 
+      // try (FileOutputStream out = new FileOutputStream(fileName.split(".")[0]+".jpg")) {
+      //   bmp.compress(Bitmap.CompressFormat.PNG, 100 * quality, out); // bmp is your Bitmap instance
+      //   // PNG is a lossless format, the compression factor (100) is ignored
+      // } catch (IOException e) {
+      //   e.printStackTrace();
+      // }
+
+      byte[] bytes = getJpegBytesFromBitmap(bitmap, quality);
+
+      return new PictureData(bytes, "image/jpeg");
+    }
+
+    return null;
+
+  }
+
   public PictureAsStream getPhotoAsStream(Context context, String photoId) throws IOException {
 
-    int imageId = getImageId(photoId);
-    String imageURL = getImageURL(photoId);
+    int imageId = getMediaId(photoId);
+    String imageURL = getMediaURL(photoId);
     File imageFile = new File(imageURL);
     Uri imageUri = Uri.fromFile(imageFile);
 
@@ -171,8 +208,10 @@ public class PhotoLibraryService {
 
         bitmap.recycle();
 
-        // Here we perform conversion with data loss, but it seems better than handling orientation in JavaScript.
-        // Converting to PNG can be an option to prevent data loss, but in price of very large files.
+        // Here we perform conversion with data loss, but it seems better than handling
+        // orientation in JavaScript.
+        // Converting to PNG can be an option to prevent data loss, but in price of very
+        // large files.
         byte[] bytes = getJpegBytesFromBitmap(rotatedBitmap, 1.0); // minimize data loss with 1.0 quality
 
         is = new ByteArrayInputStream(bytes);
@@ -187,15 +226,15 @@ public class PhotoLibraryService {
 
     PictureAsStream pictureAsStream = getPhotoAsStream(context, photoId);
 
-    byte[] bytes =  readBytes(pictureAsStream.getStream());
+    byte[] bytes = readBytes(pictureAsStream.getStream());
     pictureAsStream.getStream().close();
 
     return new PictureData(bytes, pictureAsStream.getMimeType());
 
   }
 
-  public void saveImage(final Context context, final CordovaInterface cordova, final String url, String album, final JSONObjectRunnable completion)
-    throws IOException, URISyntaxException {
+  public void saveImage(final Context context, final CordovaInterface cordova, final String url, String album,
+      final JSONObjectRunnable completion) throws IOException, URISyntaxException {
 
     saveMedia(context, cordova, url, album, imageMimeToExtension, new FilePathRunnable() {
       @Override
@@ -218,7 +257,7 @@ public class PhotoLibraryService {
   }
 
   public void saveVideo(final Context context, final CordovaInterface cordova, String url, String album)
-    throws IOException, URISyntaxException {
+      throws IOException, URISyntaxException {
 
     saveMedia(context, cordova, url, album, videMimeToExtension, new FilePathRunnable() {
       @Override
@@ -248,9 +287,13 @@ public class PhotoLibraryService {
       this.mimeType = mimeType;
     }
 
-    public InputStream getStream() { return this.stream; }
+    public InputStream getStream() {
+      return this.stream;
+    }
 
-    public String getMimeType() { return this.mimeType; }
+    public String getMimeType() {
+      return this.mimeType;
+    }
 
     private InputStream stream;
     private String mimeType;
@@ -263,7 +306,8 @@ public class PhotoLibraryService {
 
   private Pattern dataURLPattern = Pattern.compile("^data:(.+?)/(.+?);base64,");
 
-  private ArrayList<JSONObject> queryContentProvider(Context context, Uri collection, JSONObject columns, String whereClause, int maxItems) throws JSONException {
+  private ArrayList<JSONObject> queryContentProvider(Context context, Uri collection, JSONObject columns,
+      String whereClause, int maxItems) throws JSONException {
 
     final ArrayList<String> columnNames = new ArrayList<String>();
     final ArrayList<String> columnValues = new ArrayList<String>();
@@ -279,10 +323,8 @@ public class PhotoLibraryService {
 
     final String sortOrder = MediaStore.Images.Media.DATE_TAKEN + " DESC" + (maxItems > 0 ? " LIMIT " + maxItems : "");
 
-    final Cursor cursor = context.getContentResolver().query(
-      collection,
-      columnValues.toArray(new String[columns.length()]),
-      whereClause, null, sortOrder);
+    final Cursor cursor = context.getContentResolver().query(collection,
+        columnValues.toArray(new String[columns.length()]), whereClause, null, sortOrder);
 
     final ArrayList<JSONObject> buffer = new ArrayList<JSONObject>();
 
@@ -312,8 +354,7 @@ public class PhotoLibraryService {
 
         // TODO: return partial result
 
-      }
-      while (cursor.moveToNext());
+      } while (cursor.moveToNext());
     }
 
     cursor.close();
@@ -326,31 +367,34 @@ public class PhotoLibraryService {
     queryLibrary(context, 0, 0, 0, false, whereClause, completion);
   }
 
-  private void queryLibrary(Context context, int itemsInChunk, int maxItems, double chunkTimeSec, boolean includeAlbumData, String whereClause, ChunkResultRunnable completion)
-    throws JSONException {
+  private void queryLibrary(Context context, int itemsInChunk, int maxItems, double chunkTimeSec,
+      boolean includeAlbumData, String whereClause, ChunkResultRunnable completion) throws JSONException {
 
-    // All columns here: https://developer.android.com/reference/android/provider/MediaStore.Images.ImageColumns.html,
+    // All columns here:
+    // https://developer.android.com/reference/android/provider/MediaStore.Images.ImageColumns.html,
     // https://developer.android.com/reference/android/provider/MediaStore.MediaColumns.html
-    JSONObject columns = new JSONObject() {{
-      put("int.id", MediaStore.Images.Media._ID);
-      put("fileName", MediaStore.Images.ImageColumns.DISPLAY_NAME);
-      put("int.width", MediaStore.Images.ImageColumns.WIDTH);
-      put("int.height", MediaStore.Images.ImageColumns.HEIGHT);
-      put("albumId", MediaStore.Images.ImageColumns.BUCKET_ID);
-      put("date.creationDate", MediaStore.Images.ImageColumns.DATE_TAKEN);
-      put("float.latitude", MediaStore.Images.ImageColumns.LATITUDE);
-      put("float.longitude", MediaStore.Images.ImageColumns.LONGITUDE);
-      put("nativeURL", MediaStore.MediaColumns.DATA); // will not be returned to javascript
-    }};
+    JSONObject columns = new JSONObject() {
+      {
+        put("int.id", MediaStore.Images.Media._ID);
+        put("fileName", MediaStore.MediaColumns.DISPLAY_NAME);
+        put("int.width", MediaStore.Images.ImageColumns.WIDTH);
+        put("int.height", MediaStore.Images.ImageColumns.HEIGHT);
+        put("albumId", MediaStore.MediaColumns.BUCKET_ID);
+        put("date.creationDate", MediaStore.MediaColumns.DATE_TAKEN);
+        put("mimeType", MediaStore.MediaColumns.MIME_TYPE);
+        put("nativeURL", MediaStore.MediaColumns.DATA); // will not be returned to javascript
+      }
+    };
 
-    final ArrayList<JSONObject> queryResults = queryContentProvider(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, columns, whereClause, maxItems);
+    final ArrayList<JSONObject> queryResults = queryContentProvider(context, MediaStore.Files.getContentUri("external"),
+        columns, whereClause, maxItems);
 
     ArrayList<JSONObject> chunk = new ArrayList<JSONObject>();
 
     long chunkStartTime = SystemClock.elapsedRealtime();
     int chunkNum = 0;
 
-    for (int i=0; i<queryResults.size(); i++) {
+    for (int i = 0; i < queryResults.size(); i++) {
       JSONObject queryResult = queryResults.get(i);
 
       // swap width and height if needed
@@ -366,9 +410,7 @@ public class PhotoLibraryService {
       }
 
       // photoId is in format "imageid;imageurl"
-      queryResult.put("id",
-          queryResult.get("id") + ";" +
-          queryResult.get("nativeURL"));
+      queryResult.put("id", queryResult.get("id") + ";" + queryResult.get("nativeURL"));
 
       queryResult.remove("nativeURL"); // Not needed
 
@@ -384,7 +426,8 @@ public class PhotoLibraryService {
 
       if (i == queryResults.size() - 1) { // Last item
         completion.run(chunk, chunkNum, true);
-      } else if ((itemsInChunk > 0 && chunk.size() == itemsInChunk) || (chunkTimeSec > 0 && (SystemClock.elapsedRealtime() - chunkStartTime) >= chunkTimeSec*1000)) {
+      } else if ((itemsInChunk > 0 && chunk.size() == itemsInChunk)
+          || (chunkTimeSec > 0 && (SystemClock.elapsedRealtime() - chunkStartTime) >= chunkTimeSec * 1000)) {
         completion.run(chunk, chunkNum, false);
         chunkNum += 1;
         chunk = new ArrayList<JSONObject>();
@@ -397,11 +440,9 @@ public class PhotoLibraryService {
 
   private String queryMimeType(Context context, int imageId) {
 
-    Cursor cursor = context.getContentResolver().query(
-      MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-      new String[] { MediaStore.Images.ImageColumns.MIME_TYPE },
-      MediaStore.MediaColumns._ID + "=?",
-      new String[] {Integer.toString(imageId)}, null);
+    Cursor cursor = context.getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        new String[] { MediaStore.Images.ImageColumns.MIME_TYPE }, MediaStore.MediaColumns._ID + "=?",
+        new String[] { Integer.toString(imageId) }, null);
 
     if (cursor != null && cursor.moveToFirst()) {
       String mimeType = cursor.getString(cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE));
@@ -415,10 +456,11 @@ public class PhotoLibraryService {
     return null;
   }
 
-  // From https://developer.android.com/training/displaying-bitmaps/load-bitmap.html
+  // From
+  // https://developer.android.com/training/displaying-bitmaps/load-bitmap.html
   private static int calculateInSampleSize(
 
-    BitmapFactory.Options options, int reqWidth, int reqHeight) {
+      BitmapFactory.Options options, int reqWidth, int reqHeight) {
     // Raw height and width of image
     final int height = options.outHeight;
     final int width = options.outWidth;
@@ -431,8 +473,7 @@ public class PhotoLibraryService {
 
       // Calculate the largest inSampleSize value that is a power of 2 and keeps both
       // height and width larger than the requested height and width.
-      while ((halfHeight / inSampleSize) >= reqHeight
-        && (halfWidth / inSampleSize) >= reqWidth) {
+      while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
         inSampleSize *= 2;
       }
     }
@@ -444,7 +485,7 @@ public class PhotoLibraryService {
   private static byte[] getJpegBytesFromBitmap(Bitmap bitmap, double quality) {
 
     ByteArrayOutputStream stream = new ByteArrayOutputStream();
-    bitmap.compress(Bitmap.CompressFormat.JPEG, (int)(quality * 100), stream);
+    bitmap.compress(Bitmap.CompressFormat.JPEG, (int) (quality * 100), stream);
 
     return stream.toByteArray();
 
@@ -478,13 +519,13 @@ public class PhotoLibraryService {
 
   }
 
-  // photoId is in format "imageid;imageurl;[swap]"
-  private static int getImageId(String photoId) {
-    return Integer.parseInt(photoId.split(";")[0]);
+  // photoId is in format "mediaId;mediaurl;[swap]"
+  private static int getMediaId(String mediaId) {
+    return Integer.parseInt(mediaId.split(";")[0]);
   }
 
-  // photoId is in format "imageid;imageurl;[swap]"
-  private static String getImageURL(String photoId) {
+  // photoId is in format "mediaid;mediaurl;[swap]"
+  private static String getMediaURL(String photoId) {
     return photoId.split(";")[1];
   }
 
@@ -497,14 +538,15 @@ public class PhotoLibraryService {
 
   }
 
-  // see http://www.daveperrett.com/articles/2012/07/28/exif-orientation-handling-is-a-ghetto/
+  // see
+  // http://www.daveperrett.com/articles/2012/07/28/exif-orientation-handling-is-a-ghetto/
   private static Bitmap rotateImage(Bitmap source, int orientation) {
 
     Matrix matrix = new Matrix();
 
     switch (orientation) {
       case ExifInterface.ORIENTATION_NORMAL: // 1
-          return source;
+        return source;
       case ExifInterface.ORIENTATION_FLIP_HORIZONTAL: // 2
         matrix.setScale(-1, 1);
         break;
@@ -540,13 +582,14 @@ public class PhotoLibraryService {
   // Returns true if orientation rotates image by 90 or 270 degrees.
   private static boolean isOrientationSwapsDimensions(int orientation) {
     return orientation == ExifInterface.ORIENTATION_TRANSPOSE // 5
-      || orientation == ExifInterface.ORIENTATION_ROTATE_90 // 6
-      || orientation == ExifInterface.ORIENTATION_TRANSVERSE // 7
-      || orientation == ExifInterface.ORIENTATION_ROTATE_270; // 8
+        || orientation == ExifInterface.ORIENTATION_ROTATE_90 // 6
+        || orientation == ExifInterface.ORIENTATION_TRANSVERSE // 7
+        || orientation == ExifInterface.ORIENTATION_ROTATE_270; // 8
   }
 
   private static File makeAlbumInPhotoLibrary(String album) {
-    File albumDirectory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), album);
+    File albumDirectory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+        album);
     if (!albumDirectory.exists()) {
       albumDirectory.mkdirs();
     }
@@ -555,9 +598,8 @@ public class PhotoLibraryService {
 
   private File getImageFileName(File albumDirectory, String extension) {
     Calendar calendar = Calendar.getInstance();
-    String dateStr = calendar.get(Calendar.YEAR) +
-      "-" + calendar.get(Calendar.MONTH) +
-      "-" + calendar.get(Calendar.DAY_OF_MONTH);
+    String dateStr = calendar.get(Calendar.YEAR) + "-" + calendar.get(Calendar.MONTH) + "-"
+        + calendar.get(Calendar.DAY_OF_MONTH);
     int i = 1;
     File result;
     do {
@@ -572,26 +614,31 @@ public class PhotoLibraryService {
 
     String filePath = file.getAbsolutePath();
 
-    MediaScannerConnection.scanFile(context, new String[]{filePath}, null, new MediaScannerConnection.OnScanCompletedListener() {
-      @Override
-      public void onScanCompleted(String path, Uri uri) {
-        completion.run(path);
-      }
-    });
+    MediaScannerConnection.scanFile(context, new String[] { filePath }, null,
+        new MediaScannerConnection.OnScanCompletedListener() {
+          @Override
+          public void onScanCompleted(String path, Uri uri) {
+            completion.run(path);
+          }
+        });
 
   }
 
-  private Map<String, String> imageMimeToExtension = new HashMap<String, String>(){{
-    put("jpeg", ".jpg");
-  }};
+  private Map<String, String> imageMimeToExtension = new HashMap<String, String>() {
+    {
+      put("jpeg", ".jpg");
+    }
+  };
 
-  private Map<String, String> videMimeToExtension = new HashMap<String, String>(){{
-    put("quicktime", ".mov");
-    put("ogg", ".ogv");
-  }};
+  private Map<String, String> videMimeToExtension = new HashMap<String, String>() {
+    {
+      put("quicktime", ".mov");
+      put("ogg", ".ogv");
+    }
+  };
 
-  private void saveMedia(Context context, CordovaInterface cordova, String url, String album, Map<String, String> mimeToExtension, FilePathRunnable completion)
-    throws IOException, URISyntaxException {
+  private void saveMedia(Context context, CordovaInterface cordova, String url, String album,
+      Map<String, String> mimeToExtension, FilePathRunnable completion) throws IOException, URISyntaxException {
 
     File albumDirectory = makeAlbumInPhotoLibrary(album);
     File targetFile;
@@ -634,7 +681,7 @@ public class PhotoLibraryService {
       InputStream is;
       FileOutputStream os = new FileOutputStream(targetFile);
 
-      if(url.startsWith("file:///android_asset/")) {
+      if (url.startsWith("file:///android_asset/")) {
         String assetUrl = url.replace("file:///android_asset/", "");
         is = cordova.getActivity().getApplicationContext().getAssets().open(assetUrl);
       } else {
