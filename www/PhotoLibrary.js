@@ -1,20 +1,19 @@
-var exec = require('cordova/exec');
+var exec = require("cordova/exec");
 
-var async = cordova.require('cordova-plugin-photo-library.async');
+var async = cordova.require("cordova-plugin-photo-library.async");
 
 var defaultThumbnailWidth = 512; // optimal for android
 var defaultThumbnailHeight = 384; // optimal for android
 
 var defaultQuality = 0.5;
 
-var isBrowser = cordova.platformId == 'browser';
-var isIOS = cordova.platformId == 'ios';
+var isBrowser = cordova.platformId == "browser";
+var isIOS = cordova.platformId == "ios";
 
 var photoLibrary = {};
 
 // Will start caching for specified size
 photoLibrary.getLibrary = function (success, error, options) {
-
   if (!options) {
     options = {};
   }
@@ -26,25 +25,29 @@ photoLibrary.getLibrary = function (success, error, options) {
     itemsInChunk: options.itemsInChunk || 0,
     chunkTimeSec: options.chunkTimeSec || 0,
     useOriginalFileNames: options.useOriginalFileNames || false,
-    includeImages: options.includeImages !== undefined ? options.includeImages : true,
+    includeImages:
+      options.includeImages !== undefined ? options.includeImages : true,
     includeAlbumData: options.includeAlbumData || false,
-    includeCloudData: options.includeCloudData !== undefined ? options.includeCloudData : true,
+    includeCloudData:
+      options.includeCloudData !== undefined ? options.includeCloudData : true,
     includeVideos: options.includeVideos || false,
-    maxItems: options.maxItems || 0
+    maxItems: options.maxItems || 0,
   };
 
   // queue that keeps order of async processing
-  var q = async.queue(function(chunk, done) {
-
+  var q = async.queue(function (chunk, done) {
     var library = chunk.library;
     var isLastChunk = chunk.isLastChunk;
 
-    processLibrary(library, function(library) {
-      var result = { library: library, isLastChunk: isLastChunk };
-      success(result);
-      done();
-    }, options);
-
+    processLibrary(
+      library,
+      function (library) {
+        var result = { library: library, isLastChunk: isLastChunk };
+        success(result);
+        done();
+      },
+      options
+    );
   });
 
   var chunksToProcess = []; // chunks are stored in its index
@@ -68,42 +71,40 @@ photoLibrary.getLibrary = function (success, error, options) {
       }
     },
     error,
-    'PhotoLibrary',
-    'getLibrary', [options]
+    "PhotoLibrary",
+    "getLibrary",
+    [options]
   );
-
 };
 
 photoLibrary.getAlbums = function (success, error) {
-
   cordova.exec(
     function (result) {
       success(result);
     },
     error,
-    'PhotoLibrary',
-    'getAlbums', []
+    "PhotoLibrary",
+    "getAlbums",
+    []
   );
-
 };
 
 photoLibrary.isAuthorized = function (success, error) {
-
   cordova.exec(
     function (result) {
       success(result);
     },
     error,
-    'PhotoLibrary',
-    'isAuthorized', []
+    "PhotoLibrary",
+    "isAuthorized",
+    []
   );
-
 };
 
 // Generates url that can be accessed directly, so it will work more efficiently than getThumbnail, which does base64 encode/decode.
 // If success callback not provided, will return value immediately, but use overload with success as it browser-friendly
 photoLibrary.getThumbnailURL = function (libraryItem, success, error, options) {
-  if (typeof success !== 'function' && typeof options === 'undefined') {
+  if (typeof success !== "function" && typeof options === "undefined") {
     options = success;
     success = undefined;
   }
@@ -115,18 +116,26 @@ photoLibrary.getThumbnailURL = function (libraryItem, success, error, options) {
       success(thumbnailURL);
     },
     error,
-    'PhotoLibrary',
-    'getThumbnailURL', [libraryItem, options]
+    "PhotoLibrary",
+    "getThumbnailURL",
+    [libraryItem, options]
   );
 };
 
 // Generates url that can be accessed directly, so it will work more efficiently than getPhoto, which does base64 encode/decode.
 // If success callback not provided, will return value immediately, but use overload with success as it browser-friendly
-photoLibrary.getPhotoURL = function (photoIdOrLibraryItem, success, error, options) {
+photoLibrary.getPhotoURL = function (
+  photoIdOrLibraryItem,
+  success,
+  error,
+  options
+) {
+  var photoId =
+    typeof photoIdOrLibraryItem.id !== "undefined"
+      ? photoIdOrLibraryItem.id
+      : photoIdOrLibraryItem;
 
-  var photoId = typeof photoIdOrLibraryItem.id !== 'undefined' ? photoIdOrLibraryItem.id : photoIdOrLibraryItem;
-
-  if (typeof success !== 'function' && typeof options === 'undefined') {
+  if (typeof success !== "function" && typeof options === "undefined") {
     options = success;
     success = undefined;
   }
@@ -135,25 +144,39 @@ photoLibrary.getPhotoURL = function (photoIdOrLibraryItem, success, error, optio
     options = {};
   }
 
-  var urlParams = 'photoId=' + fixedEncodeURIComponent(photoId);
-  var photoURL = 'cdvphotolibrary://photo?' + urlParams;
+  var urlParams = "photoId=" + fixedEncodeURIComponent(photoId);
+  var photoURL = "cdvphotolibrary://photo?" + urlParams;
 
   if (success) {
     if (isBrowser) {
-      cordova.exec(function(photoURL) { success(photoURL + '#' + urlParams); }, error, 'PhotoLibrary', '_getPhotoURLBrowser', [photoId, options]);
+      cordova.exec(
+        function (photoURL) {
+          success(photoURL + "#" + urlParams);
+        },
+        error,
+        "PhotoLibrary",
+        "_getPhotoURLBrowser",
+        [photoId, options]
+      );
     } else {
       success(photoURL);
     }
   } else {
     return photoURL;
   }
-
 };
 
 // Provide same size as when calling getLibrary for better performance
-photoLibrary.getThumbnail = function (photoIdOrLibraryItem, success, error, options) {
-
-  var photoId = typeof photoIdOrLibraryItem.id !== 'undefined' ? photoIdOrLibraryItem.id : photoIdOrLibraryItem;
+photoLibrary.getThumbnail = function (
+  photoIdOrLibraryItem,
+  success,
+  error,
+  options
+) {
+  var photoId =
+    typeof photoIdOrLibraryItem.id !== "undefined"
+      ? photoIdOrLibraryItem.id
+      : photoIdOrLibraryItem;
 
   options = getThumbnailOptionsWithDefaults(options);
 
@@ -163,15 +186,22 @@ photoLibrary.getThumbnail = function (photoIdOrLibraryItem, success, error, opti
       success(blob);
     },
     error,
-    'PhotoLibrary',
-    'getThumbnail', [photoId, options]
+    "PhotoLibrary",
+    "getThumbnail",
+    [photoId, options]
   );
-
 };
 
-photoLibrary.getPhoto = function (photoIdOrLibraryItem, success, error, options) {
-
-  var photoId = typeof photoIdOrLibraryItem.id !== 'undefined' ? photoIdOrLibraryItem.id : photoIdOrLibraryItem;
+photoLibrary.getPhoto = function (
+  photoIdOrLibraryItem,
+  success,
+  error,
+  options
+) {
+  var photoId =
+    typeof photoIdOrLibraryItem.id !== "undefined"
+      ? photoIdOrLibraryItem.id
+      : photoIdOrLibraryItem;
 
   if (!options) {
     options = {};
@@ -183,14 +213,13 @@ photoLibrary.getPhoto = function (photoIdOrLibraryItem, success, error, options)
       success(blob);
     },
     error,
-    'PhotoLibrary',
-    'getPhoto', [photoId, options]
+    "PhotoLibrary",
+    "getPhoto",
+    [photoId, options]
   );
-
 };
 
 photoLibrary.getLibraryItem = function (libraryItem, success, error, options) {
-
   if (!options) {
     options = {};
   }
@@ -201,41 +230,28 @@ photoLibrary.getLibraryItem = function (libraryItem, success, error, options) {
       success(blob);
     },
     error,
-    'PhotoLibrary',
-    'getLibraryItem', [libraryItem, options]
+    "PhotoLibrary",
+    "getLibraryItem",
+    [libraryItem, options]
   );
-
 };
 
 // Call when thumbnails are not longer needed for better performance
 photoLibrary.stopCaching = function (success, error) {
-
-  cordova.exec(
-    success,
-    error,
-    'PhotoLibrary',
-    'stopCaching', []
-  );
-
+  cordova.exec(success, error, "PhotoLibrary", "stopCaching", []);
 };
 
 // Call when getting errors that begin with 'Permission Denial'
 photoLibrary.requestAuthorization = function (success, error, options) {
-
   options = getRequestAuthenticationOptionsWithDefaults(options);
 
-  cordova.exec(
-    success,
-    error,
-    'PhotoLibrary',
-    'requestAuthorization', [options]
-  );
-
+  cordova.exec(success, error, "PhotoLibrary", "requestAuthorization", [
+    options,
+  ]);
 };
 
 // url is file url or dataURL
 photoLibrary.saveImage = function (url, album, success, error, options) {
-
   options = getThumbnailOptionsWithDefaults(options);
 
   if (album.title) {
@@ -246,38 +262,33 @@ photoLibrary.saveImage = function (url, album, success, error, options) {
     function (libraryItem) {
       var library = libraryItem ? [libraryItem] : [];
 
-      processLibrary(library, function(library) {
-        success(library[0] || null);
-      }, options);
-
+      processLibrary(
+        library,
+        function (library) {
+          success(library[0] || null);
+        },
+        options
+      );
     },
     error,
-    'PhotoLibrary',
-    'saveImage', [url, album]
+    "PhotoLibrary",
+    "saveImage",
+    [url, album]
   );
-
 };
 
 // url is file url or dataURL
 photoLibrary.saveVideo = function (url, album, success, error) {
-
   if (album.title) {
     album = album.title;
   }
 
-  cordova.exec(
-    success,
-    error,
-    'PhotoLibrary',
-    'saveVideo', [url, album]
-  );
-
+  cordova.exec(success, error, "PhotoLibrary", "saveVideo", [url, album]);
 };
 
 module.exports = photoLibrary;
 
 var getThumbnailOptionsWithDefaults = function (options) {
-
   if (!options) {
     options = {};
   }
@@ -289,11 +300,9 @@ var getThumbnailOptionsWithDefaults = function (options) {
   };
 
   return options;
-
 };
 
 var getRequestAuthenticationOptionsWithDefaults = function (options) {
-
   if (!options) {
     options = {};
   }
@@ -304,15 +313,12 @@ var getRequestAuthenticationOptionsWithDefaults = function (options) {
   };
 
   return options;
-
 };
 
 var processLibrary = function (library, success, options) {
-
   parseDates(library);
 
   addUrlsToLibrary(library, success, options);
-
 };
 
 var parseDates = function (library) {
@@ -326,7 +332,6 @@ var parseDates = function (library) {
 };
 
 var addUrlsToLibrary = function (library, callback, options) {
-
   var urlsLeft = library.length;
 
   var handlePhotoURL = function (libraryItem, photoURL) {
@@ -339,7 +344,11 @@ var addUrlsToLibrary = function (library, callback, options) {
 
   var handleThumbnailURL = function (libraryItem, thumbnailURL) {
     libraryItem.thumbnailURL = thumbnailURL;
-    photoLibrary.getPhotoURL(libraryItem, handlePhotoURL.bind(null, libraryItem), handleUrlError);
+    photoLibrary.getPhotoURL(
+      libraryItem,
+      handlePhotoURL.bind(null, libraryItem),
+      handleUrlError
+    );
   };
 
   var handleUrlError = function () {}; // Should never happen
@@ -347,9 +356,13 @@ var addUrlsToLibrary = function (library, callback, options) {
   var i;
   for (i = 0; i < library.length; i++) {
     var libraryItem = library[i];
-    photoLibrary.getThumbnailURL(libraryItem, handleThumbnailURL.bind(null, libraryItem), handleUrlError, options);
+    photoLibrary.getThumbnailURL(
+      libraryItem,
+      handleThumbnailURL.bind(null, libraryItem),
+      handleUrlError,
+      options
+    );
   }
-
 };
 
 var dataAndMimeTypeToBlob = function (data, mimeType) {
@@ -358,12 +371,12 @@ var dataAndMimeTypeToBlob = function (data, mimeType) {
     mimeType = data.mimeType;
     data = data.data;
   }
-  if (typeof data === 'string') {
+  if (typeof data === "string") {
     // workaround for data arrives as base64 instead of arrayBuffer, with cordova-android 6.x
-    data = cordova.require('cordova/base64').toArrayBuffer(data);
+    data = cordova.require("cordova/base64").toArrayBuffer(data);
   }
   var blob = new Blob([data], {
-    type: mimeType
+    type: mimeType,
   });
 
   return blob;
@@ -372,6 +385,6 @@ var dataAndMimeTypeToBlob = function (data, mimeType) {
 // from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent
 function fixedEncodeURIComponent(str) {
   return encodeURIComponent(str).replace(/[!'()*]/g, function (c) {
-    return '%' + c.charCodeAt(0).toString(16);
+    return "%" + c.charCodeAt(0).toString(16);
   });
 }

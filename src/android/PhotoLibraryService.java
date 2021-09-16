@@ -70,8 +70,11 @@ public class PhotoLibraryService {
   public void getLibrary(Context context, PhotoLibraryGetLibraryOptions options, ChunkResultRunnable completion)
       throws JSONException {
 
-    String whereClause = MediaStore.Files.FileColumns.MEDIA_TYPE + "=" + MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE
-        + " OR " + MediaStore.Files.FileColumns.MEDIA_TYPE + "=" + MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO;
+    String whereClause = MediaStore.Files.FileColumns.MEDIA_TYPE + "=" + MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE;
+    if (options.includeVideos) {
+      whereClause += " OR " + MediaStore.Files.FileColumns.MEDIA_TYPE + "="
+          + MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO;
+    }
     queryLibrary(context, options.itemsInChunk, options.maxItems, options.chunkTimeSec, options.includeAlbumData,
         whereClause, completion);
 
@@ -158,34 +161,33 @@ public class PhotoLibraryService {
 
   }
 
-  public PhotoLibraryService.PictureData getThumbnailURL(Context context, String rawMediaId, String mimeType, String fileName, int thumbnailWidth,
-      int thumbnailHeight, double quality) throws IOException {
+  public String getThumbnailURL(Context context, String rawMediaId, String mimeType, String fileName,
+      int thumbnailWidth, int thumbnailHeight, double quality) throws IOException {
 
     Bitmap bitmap = null;
-
     String mediaURL = getMediaURL(rawMediaId);
     int mediaId = getMediaId(rawMediaId);
 
-    // bitmap = context.getContentResolver().loadThumbnail(Uri.fromFile(new File(mediaURL)), new Size(thumbnailWidth, thumbnailHeight), null);
-
-    if(mimeType.split("/")[0] == "image"){
-      bitmap = MediaStore.Images.Thumbnails.getThumbnail(context.getContentResolver(), mediaId, MediaStore.Images.Thumbnails.MINI_KIND, null);
-    } else if(mimeType.split("/")[0] == "video"){
-      bitmap = MediaStore.Video.Thumbnails.getThumbnail(context.getContentResolver(), mediaId, MediaStore.Images.Thumbnails.MINI_KIND, null);
+    if (mimeType.startsWith("image")) {
+      bitmap = MediaStore.Images.Thumbnails.getThumbnail(context.getContentResolver(), mediaId,
+          MediaStore.Images.Thumbnails.MINI_KIND, null);
+    } else if (mimeType.startsWith("video")) {
+      bitmap = MediaStore.Video.Thumbnails.getThumbnail(context.getContentResolver(), mediaId,
+          MediaStore.Images.Thumbnails.MINI_KIND, null);
     }
 
     if (bitmap != null) {
-      // String newThumbnailName = 
-      // try (FileOutputStream out = new FileOutputStream(fileName.split(".")[0]+".jpg")) {
-      //   bmp.compress(Bitmap.CompressFormat.PNG, 100 * quality, out); // bmp is your Bitmap instance
-      //   // PNG is a lossless format, the compression factor (100) is ignored
-      // } catch (IOException e) {
-      //   e.printStackTrace();
-      // }
+      File mediaFile = new File(context.getCacheDir(), (fileName.split("\\.")[0]) + ".jpg");
+      mediaFile.createNewFile();
 
-      byte[] bytes = getJpegBytesFromBitmap(bitmap, quality);
+      // write the bytes in file
+      FileOutputStream fos = new FileOutputStream(mediaFile);
+      fos.write(getJpegBytesFromBitmap(bitmap, quality));
+      fos.flush();
+      fos.close();
 
-      return new PictureData(bytes, "image/jpeg");
+      // to fix url starting with file:/ with one / not //
+      return new StringBuilder(mediaFile.toURI().toString()).insert(6, "/").toString();
     }
 
     return null;
